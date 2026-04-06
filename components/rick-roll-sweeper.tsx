@@ -19,6 +19,7 @@ const RICKROLL_COUNT = 70;
 const BEST_SCORE_KEY = 'rickroll-sweeper-best-score';
 const RICKROLL_VIDEO_URL = '/videos/rickroll.mp4';
 const HOME_BG_URL = '/images/rickroll-bg.jpg';
+const LOSE_TEXT = 'Bạn đã bị rick roll 😂😂😂';
 
 function createEmptyGrid(): Tile[][] {
   const grid: Tile[][] = [];
@@ -366,7 +367,7 @@ export default function RickRollSweeper() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-fuchsia-950 via-purple-900 to-indigo-950 text-white">
+    <div className="relative min-h-screen bg-gradient-to-br from-fuchsia-950 via-purple-900 to-indigo-950 text-white">
       {screen === 'home' && (
         <div
           className="relative flex min-h-screen items-center justify-center overflow-hidden px-6"
@@ -503,7 +504,7 @@ export default function RickRollSweeper() {
             </button>
 
             <div className="mb-3 pr-28 text-lg font-extrabold text-pink-300 sm:text-2xl">
-              You got Rick Rolled!
+              {LOSE_TEXT}
             </div>
 
             <div className="overflow-hidden rounded-xl">
@@ -540,7 +541,7 @@ export default function RickRollSweeper() {
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-purple-950 p-6 text-center shadow-2xl">
             <div className="text-3xl font-black text-pink-300">
-              {won ? 'You Win!' : 'You got Rick Rolled!'}
+              {won ? 'You Win! 🎉' : LOSE_TEXT}
             </div>
 
             <div className="mt-4 space-y-2 text-base text-white/90">
@@ -569,6 +570,10 @@ export default function RickRollSweeper() {
           </div>
         </div>
       )}
+
+      <div className="pointer-events-none fixed bottom-3 right-4 z-[10001] text-xs font-medium tracking-wide text-white/35 sm:bottom-4 sm:right-5 sm:text-sm">
+        Dev: Anh Minh
+      </div>
     </div>
   );
 }
