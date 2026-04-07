@@ -22,8 +22,8 @@ const PLAYER_X = 80;
 const PLAYER_WIDTH = 64;
 const PLAYER_HEIGHT = 64;
 
-const GRAVITY = 1.1;
-const JUMP_POWER = 19;
+const GRAVITY = 1.2;
+const JUMP_POWER = 17;
 const BASE_SPEED = 7;
 const MAX_SPEED = 13;
 const TICK_MS = 16;
