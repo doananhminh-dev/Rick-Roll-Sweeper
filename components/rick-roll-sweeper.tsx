@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type Screen = 'home' | 'game';
-
 type Tile = {
   id: number;
   row: number;
@@ -14,12 +12,15 @@ type Tile = {
   adjacentCount: number;
 };
 
+type Props = {
+  onBackHome: () => void;
+};
+
 const GRID_SIZE = 20;
 const RICKROLL_COUNT = 70;
 const BEST_SCORE_KEY = 'rickroll-sweeper-best-score';
 const RICKROLL_VIDEO_URL = '/videos/rickroll.mp4';
-const HOME_BG_URL = '/images/rickroll-bg.jpg';
-const LOSE_TEXT = 'Bạn đã bị rick roll 😂😂😂';
+const LOSE_TEXT = 'Bạn đã bị rick roll rồi 😂';
 
 function createEmptyGrid(): Tile[][] {
   const grid: Tile[][] = [];
@@ -50,7 +51,6 @@ function getNeighbors(row: number, col: number): Array<{ row: number; col: numbe
   for (let dr = -1; dr <= 1; dr++) {
     for (let dc = -1; dc <= 1; dc++) {
       if (dr === 0 && dc === 0) continue;
-
       const nr = row + dr;
       const nc = col + dc;
 
@@ -119,8 +119,7 @@ function getNumberColor(count: number) {
   }
 }
 
-export default function RickRollSweeper() {
-  const [screen, setScreen] = useState<Screen>('home');
+export default function RickRollSweeper({ onBackHome }: Props) {
   const [grid, setGrid] = useState<Tile[][]>([]);
   const [score, setScore] = useState(0);
   const [bestScore, setBestScore] = useState(0);
@@ -136,6 +135,7 @@ export default function RickRollSweeper() {
   useEffect(() => {
     const saved = localStorage.getItem(BEST_SCORE_KEY);
     setBestScore(saved ? Number(saved) : 0);
+    startNewGame();
   }, []);
 
   const totalRevealed = useMemo(() => {
@@ -146,7 +146,16 @@ export default function RickRollSweeper() {
     return grid.flat().filter((tile) => tile.isFlagged).length;
   }, [grid]);
 
+  function stopVideo() {
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+      video.currentTime = 0;
+    }
+  }
+
   function startNewGame() {
+    stopVideo();
     setGrid(generateGrid());
     setScore(0);
     setGameOver(false);
@@ -154,15 +163,6 @@ export default function RickRollSweeper() {
     setShowVideoOverlay(false);
     setShowGameOverModal(false);
     setVideoNeedsUserStart(false);
-  }
-
-  function handlePlay() {
-    startNewGame();
-    setScreen('game');
-  }
-
-  function handleRestart() {
-    startNewGame();
   }
 
   function updateBestScore(finalScore: number) {
@@ -197,12 +197,10 @@ export default function RickRollSweeper() {
       pointer += 1;
 
       const key = `${current.row}-${current.col}`;
-
       if (visited.has(key)) continue;
       visited.add(key);
 
       const tile = newGrid[current.row][current.col];
-
       if (!tile || tile.isRevealed || tile.isRickRoll || tile.isFlagged) continue;
 
       tile.isRevealed = true;
@@ -210,7 +208,6 @@ export default function RickRollSweeper() {
 
       if (tile.adjacentCount === 0) {
         const neighbors = getNeighbors(current.row, current.col);
-
         for (const neighbor of neighbors) {
           const neighborTile = newGrid[neighbor.row][neighbor.col];
           if (
@@ -246,22 +243,15 @@ export default function RickRollSweeper() {
     video.volume = 1;
 
     const playPromise = video.play();
-
     if (playPromise !== undefined) {
       playPromise
-        .then(() => {
-          setVideoNeedsUserStart(false);
-        })
+        .then(() => setVideoNeedsUserStart(false))
         .catch(() => {
           video.muted = true;
           video
             .play()
-            .then(() => {
-              setVideoNeedsUserStart(true);
-            })
-            .catch(() => {
-              setVideoNeedsUserStart(true);
-            });
+            .then(() => setVideoNeedsUserStart(true))
+            .catch(() => setVideoNeedsUserStart(true));
         });
     }
   }
@@ -302,10 +292,7 @@ export default function RickRollSweeper() {
     const nextScore = score + revealedCount;
 
     setGrid(newGrid);
-
-    if (revealedCount > 0) {
-      setScore(nextScore);
-    }
+    if (revealedCount > 0) setScore(nextScore);
 
     if (checkWin(newGrid)) {
       setWon(true);
@@ -334,11 +321,7 @@ export default function RickRollSweeper() {
   }
 
   function closeVideoOverlay() {
-    const video = videoRef.current;
-    if (video) {
-      video.pause();
-      video.currentTime = 0;
-    }
+    stopVideo();
     setShowVideoOverlay(false);
     setShowGameOverModal(true);
     setVideoNeedsUserStart(false);
@@ -348,156 +331,106 @@ export default function RickRollSweeper() {
     closeVideoOverlay();
   }
 
-  function handlePlayAgain() {
-    startNewGame();
-  }
-
-  function handleBackHome() {
-    const video = videoRef.current;
-    if (video) {
-      video.pause();
-      video.currentTime = 0;
-    }
+  function handleBackHomeClean() {
+    stopVideo();
     setShowVideoOverlay(false);
     setShowGameOverModal(false);
     setGameOver(false);
     setWon(false);
     setVideoNeedsUserStart(false);
-    setScreen('home');
+    onBackHome();
   }
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-fuchsia-950 via-purple-900 to-indigo-950 text-white">
-      {screen === 'home' && (
-        <div
-          className="relative flex min-h-screen items-center justify-center overflow-hidden px-6"
-          style={{
-            backgroundImage: `url('${HOME_BG_URL}')`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-          }}
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/15 via-purple-500/15 to-blue-500/15" />
-
-          <div className="relative z-10 mx-auto flex max-w-3xl flex-col items-center text-center">
-            <div className="mb-4 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-1 text-sm backdrop-blur">
-              🎵 Meme Mode Activated
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-4 sm:px-6">
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base">
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Current Score: <span className="text-pink-300">{score}</span>
             </div>
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Best Score: <span className="text-yellow-300">{bestScore}</span>
+            </div>
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Revealed: <span className="text-cyan-300">{totalRevealed}</span>
+            </div>
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Flags: <span className="text-orange-300">{totalFlags}</span>
+            </div>
+          </div>
 
-            <h1 className="text-5xl font-black tracking-tight sm:text-7xl">
-              Rick Roll Sweeper
-            </h1>
-
-            <p className="mt-4 max-w-xl text-lg text-white/90 sm:text-xl">
-              Chọn ô an toàn, tránh bị Rick Roll. Gameplay kiểu Dò Mìn với bản đồ
-              20x20, có mở vùng, cắm cờ và lưu best score.
-            </p>
-
+          <div className="flex gap-3">
             <button
-              onClick={handlePlay}
-              className="mt-10 rounded-2xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-purple-600 px-12 py-5 text-2xl font-extrabold shadow-2xl transition hover:scale-105 hover:shadow-pink-500/30"
+              onClick={startNewGame}
+              className="rounded-xl bg-white/15 px-4 py-2 font-semibold transition hover:bg-white/25"
             >
-              PLAY
+              Restart
+            </button>
+            <button
+              onClick={handleBackHomeClean}
+              className="rounded-xl bg-pink-500/80 px-4 py-2 font-semibold transition hover:bg-pink-500"
+            >
+              Home
             </button>
           </div>
         </div>
-      )}
 
-      {screen === 'game' && (
-        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-4 sm:px-6">
-          <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base">
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Current Score: <span className="text-pink-300">{score}</span>
-              </div>
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Best Score: <span className="text-yellow-300">{bestScore}</span>
-              </div>
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Revealed: <span className="text-cyan-300">{totalRevealed}</span>
-              </div>
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Flags: <span className="text-orange-300">{totalFlags}</span>
-              </div>
-            </div>
+        <div className="mb-3 text-center text-xs text-white/70 sm:text-sm">
+          Left click to reveal • Right click to place/remove a flag 🚩
+        </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={handleRestart}
-                className="rounded-xl bg-white/15 px-4 py-2 font-semibold transition hover:bg-white/25"
-              >
-                Restart
-              </button>
-              <button
-                onClick={handleBackHome}
-                className="rounded-xl bg-pink-500/80 px-4 py-2 font-semibold transition hover:bg-pink-500"
-              >
-                Home
-              </button>
-            </div>
-          </div>
-
-          <div className="mb-3 text-center text-xs text-white/70 sm:text-sm">
-            Left click to reveal • Right click to place/remove a flag 🚩
-          </div>
-
-          <div className="flex flex-1 items-center justify-center">
-            <div className="max-w-full overflow-auto rounded-3xl border border-white/10 bg-black/20 p-3 shadow-2xl backdrop-blur sm:p-4">
-              <div
-                className="grid gap-[2px] sm:gap-1"
-                style={{
-                  gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
-                }}
-              >
-                {grid.flat().map((tile) => (
-                  <button
-                    key={tile.id}
-                    onClick={() => handleTileClick(tile.row, tile.col)}
-                    onContextMenu={(e) => handleRightClick(e, tile.row, tile.col)}
-                    disabled={gameOver || tile.isRevealed}
-                    className={[
-                      'flex aspect-square h-4 w-4 items-center justify-center rounded-[4px] border text-[10px] font-extrabold transition select-none sm:h-6 sm:w-6 sm:text-xs md:h-7 md:w-7',
-                      tile.isRevealed
-                        ? tile.isRickRoll
-                          ? 'border-red-400 bg-red-500/80 text-white'
-                          : 'border-white/10 bg-white/90'
-                        : tile.isFlagged
-                        ? 'border-orange-300 bg-gradient-to-br from-orange-500 to-red-600 text-white hover:brightness-110'
-                        : 'border-white/10 bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:scale-[1.03] hover:from-slate-600 hover:to-slate-700',
-                    ].join(' ')}
-                  >
-                    {tile.isRevealed ? (
-                      tile.isRickRoll ? (
-                        <span>🎵</span>
-                      ) : tile.adjacentCount > 0 ? (
-                        <span className={getNumberColor(tile.adjacentCount)}>
-                          {tile.adjacentCount}
-                        </span>
-                      ) : (
-                        <span className="text-transparent">0</span>
-                      )
-                    ) : tile.isFlagged ? (
-                      <span>🚩</span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="max-w-full overflow-auto rounded-3xl border border-white/10 bg-black/20 p-3 shadow-2xl backdrop-blur sm:p-4">
+            <div
+              className="grid gap-[2px] sm:gap-1"
+              style={{
+                gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
+              }}
+            >
+              {grid.flat().map((tile) => (
+                <button
+                  key={tile.id}
+                  onClick={() => handleTileClick(tile.row, tile.col)}
+                  onContextMenu={(e) => handleRightClick(e, tile.row, tile.col)}
+                  disabled={gameOver || tile.isRevealed}
+                  className={[
+                    'flex aspect-square h-4 w-4 items-center justify-center rounded-[4px] border text-[10px] font-extrabold transition select-none sm:h-6 sm:w-6 sm:text-xs md:h-7 md:w-7',
+                    tile.isRevealed
+                      ? tile.isRickRoll
+                        ? 'border-red-400 bg-red-500/80 text-white'
+                        : 'border-white/10 bg-white/90'
+                      : tile.isFlagged
+                      ? 'border-orange-300 bg-gradient-to-br from-orange-500 to-red-600 text-white hover:brightness-110'
+                      : 'border-white/10 bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:scale-[1.03] hover:from-slate-600 hover:to-slate-700',
+                  ].join(' ')}
+                >
+                  {tile.isRevealed ? (
+                    tile.isRickRoll ? (
+                      <span>🎵</span>
+                    ) : tile.adjacentCount > 0 ? (
+                      <span className={getNumberColor(tile.adjacentCount)}>
+                        {tile.adjacentCount}
+                      </span>
+                    ) : (
+                      <span className="text-transparent">0</span>
+                    )
+                  ) : tile.isFlagged ? (
+                    <span>🚩</span>
+                  ) : null}
+                </button>
+              ))}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
       {showVideoOverlay && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4">
           <div className="relative w-full max-w-3xl rounded-2xl bg-black p-4 shadow-2xl">
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeVideoOverlay();
-              }}
+              onClick={closeVideoOverlay}
               className="absolute right-3 top-3 z-[10000] rounded-lg bg-white/20 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/30"
             >
               Close Video
@@ -555,13 +488,13 @@ export default function RickRollSweeper() {
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
-                onClick={handlePlayAgain}
+                onClick={startNewGame}
                 className="flex-1 rounded-xl bg-gradient-to-r from-pink-500 to-fuchsia-600 px-4 py-3 font-bold transition hover:scale-[1.02]"
               >
                 Play Again
               </button>
               <button
-                onClick={handleBackHome}
+                onClick={handleBackHomeClean}
                 className="flex-1 rounded-xl bg-white/10 px-4 py-3 font-bold transition hover:bg-white/20"
               >
                 Back to Home
