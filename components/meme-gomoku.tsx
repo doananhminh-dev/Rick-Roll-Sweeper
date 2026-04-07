@@ -11,6 +11,10 @@ type Winner = 0 | 1 | 2;
 
 const SIZE = 20;
 const WIN_COUNT = 5;
+
+const PLAYER_1_NAME = 'Diddy';
+const PLAYER_2_NAME = 'Epstein';
+
 const PLAYER_1_IMAGE = '/images/player1.png';
 const PLAYER_2_IMAGE = '/images/player2.png';
 const TICK_SOUND_URL = '/sounds/tick.mp3';
@@ -55,6 +59,18 @@ function checkWinner(board: Cell[][], row: number, col: number, player: 1 | 2): 
   }
 
   return false;
+}
+
+function getPlayerName(player: 1 | 2 | 0) {
+  if (player === 1) return PLAYER_1_NAME;
+  if (player === 2) return PLAYER_2_NAME;
+  return '';
+}
+
+function getPlayerImage(player: 1 | 2 | 0) {
+  if (player === 1) return PLAYER_1_IMAGE;
+  if (player === 2) return PLAYER_2_IMAGE;
+  return '';
 }
 
 export default function MemeGomoku({ onBackHome }: Props) {
@@ -158,10 +174,10 @@ export default function MemeGomoku({ onBackHome }: Props) {
           <div className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-2">
             <img
               src={PLAYER_1_IMAGE}
-              alt="Player 1"
+              alt={PLAYER_1_NAME}
               className="h-10 w-10 rounded-full object-cover"
             />
-            <span className="font-bold">Player 1</span>
+            <span className="font-bold">{PLAYER_1_NAME}</span>
           </div>
 
           <div className="text-xl font-black text-white/70">VS</div>
@@ -169,10 +185,10 @@ export default function MemeGomoku({ onBackHome }: Props) {
           <div className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-2">
             <img
               src={PLAYER_2_IMAGE}
-              alt="Player 2"
+              alt={PLAYER_2_NAME}
               className="h-10 w-10 rounded-full object-cover"
             />
-            <span className="font-bold">Player 2</span>
+            <span className="font-bold">{PLAYER_2_NAME}</span>
           </div>
         </div>
 
@@ -180,11 +196,11 @@ export default function MemeGomoku({ onBackHome }: Props) {
           <div className="inline-flex items-center gap-3 rounded-2xl bg-white/10 px-5 py-3">
             <span className="text-white/80">Current Turn:</span>
             <img
-              src={currentPlayer === 1 ? PLAYER_1_IMAGE : PLAYER_2_IMAGE}
-              alt="Current player"
+              src={getPlayerImage(currentPlayer)}
+              alt={getPlayerName(currentPlayer)}
               className="h-10 w-10 rounded-full object-cover"
             />
-            <span className="font-black text-pink-300">Player {currentPlayer}</span>
+            <span className="font-black text-pink-300">{getPlayerName(currentPlayer)}</span>
           </div>
         </div>
 
@@ -206,14 +222,14 @@ export default function MemeGomoku({ onBackHome }: Props) {
                     {cell === 1 && (
                       <img
                         src={PLAYER_1_IMAGE}
-                        alt="Player 1"
+                        alt={PLAYER_1_NAME}
                         className="h-full w-full rounded-[4px] object-cover"
                       />
                     )}
                     {cell === 2 && (
                       <img
                         src={PLAYER_2_IMAGE}
-                        alt="Player 2"
+                        alt={PLAYER_2_NAME}
                         className="h-full w-full rounded-[4px] object-cover"
                       />
                     )}
@@ -229,19 +245,19 @@ export default function MemeGomoku({ onBackHome }: Props) {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4">
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 to-purple-950 p-6 text-center shadow-2xl">
             <h2 className="text-3xl font-black text-emerald-300">
-              Player {winner} Wins! 🎉
+              {getPlayerName(winner)} Wins! 🎉
             </h2>
 
             <div className="mt-5 flex justify-center">
               <img
-                src={winner === 1 ? PLAYER_1_IMAGE : PLAYER_2_IMAGE}
-                alt="Winner"
+                src={getPlayerImage(winner)}
+                alt={getPlayerName(winner)}
                 className="h-28 w-28 rounded-full object-cover ring-4 ring-emerald-400/40"
               />
             </div>
 
             <p className="mt-4 text-white/80">
-              Ván này Player {winner} đã nối được 5 quân liên tiếp.
+              Ván này {getPlayerName(winner)} đã nối được 5 quân liên tiếp.
             </p>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
