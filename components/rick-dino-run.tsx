@@ -22,7 +22,7 @@ const PLAYER_X = 80;
 const PLAYER_WIDTH = 64;
 const PLAYER_HEIGHT = 64;
 
-const GRAVITY = 0.8;
+const GRAVITY = 1;
 const JUMP_POWER = 20;
 const BASE_SPEED = 7;
 const MAX_SPEED = 13;
