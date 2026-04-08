@@ -13,7 +13,7 @@ type Tile = {
 };
 
 type Props = {
-  onBackHome: () => void;
+  onBackHome?: () => void;
 };
 
 const GRID_SIZE = 20;
@@ -21,6 +21,7 @@ const RICKROLL_COUNT = 150;
 
 const BEST_SCORE_KEY = 'rickroll-sweeper-best-score';
 const RICKROLL_VIDEO_URL = '/videos/rickroll.mp4';
+
 const LOSE_TEXT = 'Bạn đã bị rick roll rồi 😂';
 
 function createEmptyGrid(): Tile[][] {
@@ -75,37 +76,24 @@ function shuffleInPlace<T>(arr: T[]) {
   return arr;
 }
 
-function generateRandomSafeBlob(clickedRow: number, clickedCol: number) {
-  // Safe “blob” ngẫu nhiên nhưng luôn bao gồm ô đầu + 8 ô kề
+function pickMinesExcludingSafeZone(clickedRow: number, clickedCol: number) {
+  // Safe zone: clicked + 8 neighbors => luôn không có mine
   const safe = new Set<number>();
+  safe.add(idxOf(clickedRow, clickedCol));
+  for (const n of getNeighbors(clickedRow, clickedCol)) {
+    safe.add(idxOf(n.row, n.col));
+  }
 
-  const base = [{ row: clickedRow, col: clickedCol }, ...getNeighbors(clickedRow, clickedCol)];
-  for (const p of base) safe.add(idxOf(p.row, p.col));
-
-  const targetSize = 10 + Math.floor(Math.random() * 8); // ~10..17 cell trong vùng an toàn
-  const frontier = [...base];
-
-  // BFS/Random expansion để blob méo ngẫu nhiên
-  while (safe.size < targetSize && frontier.length > 0) {
-    const cur = frontier[Math.floor(Math.random() * frontier.length)];
-    const neigh = getNeighbors(cur.row, cur.col);
-    shuffleInPlace(neigh);
-
-    for (const nb of neigh) {
-      const k = idxOf(nb.row, nb.col);
-      if (safe.has(k)) continue;
-
-      // thêm xác suất để blob “méo” tự nhiên
-      const chance = 0.45 + Math.random() * 0.35;
-      if (Math.random() < chance) {
-        safe.add(k);
-        frontier.push(nb);
-        if (safe.size >= targetSize) break;
-      }
+  const allowed: number[] = [];
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+      const id = idxOf(r, c);
+      if (!safe.has(id)) allowed.push(id);
     }
   }
 
-  return safe;
+  shuffleInPlace(allowed);
+  return allowed.slice(0, RICKROLL_COUNT);
 }
 
 function computeAdjacentCounts(grid: Tile[][]) {
@@ -115,8 +103,8 @@ function computeAdjacentCounts(grid: Tile[][]) {
       if (tile.isRickRoll) continue;
 
       let count = 0;
-      for (const nb of getNeighbors(r, c)) {
-        if (grid[nb.row][nb.col].isRickRoll) count++;
+      for (const n of getNeighbors(r, c)) {
+        if (grid[n.row][n.col].isRickRoll) count++;
       }
       tile.adjacentCount = count;
     }
@@ -126,32 +114,32 @@ function computeAdjacentCounts(grid: Tile[][]) {
 function revealFlood(gridInput: Tile[][], startRow: number, startCol: number) {
   const grid = cloneGrid(gridInput);
 
-  const q: Array<{ row: number; col: number }> = [{ row: startRow, col: startCol }];
+  const queue: Array<{ row: number; col: number }> = [{ row: startRow, col: startCol }];
   const visited = new Set<number>();
   let revealedCount = 0;
 
-  while (q.length > 0) {
-    const cur = q.pop()!;
+  while (queue.length > 0) {
+    const cur = queue.pop()!;
     const key = idxOf(cur.row, cur.col);
     if (visited.has(key)) continue;
     visited.add(key);
 
-    const tile = grid[cur.row][cur.col];
+    const tile = grid[cur.row]?.[cur.col];
     if (!tile) continue;
-    if (tile.isRevealed || tile.isFlagged) continue;
+    if (tile.isRevealed) continue;
+    if (tile.isFlagged) continue;
     if (tile.isRickRoll) continue;
 
     tile.isRevealed = true;
     revealedCount++;
 
-    // Minesweeper: chỉ lan khi ô = 0
+    // Minesweeper flood fill: chỉ lan khi tile là "0"
     if (tile.adjacentCount === 0) {
-      for (const nb of getNeighbors(cur.row, cur.col)) {
-        const nbTile = grid[nb.row][nb.col];
-        if (!nbTile) continue;
-        if (nbTile.isRevealed || nbTile.isFlagged) continue;
-        if (nbTile.isRickRoll) continue;
-        q.push({ row: nb.row, col: nb.col });
+      for (const n of getNeighbors(cur.row, cur.col)) {
+        const nt = grid[n.row][n.col];
+        if (!nt) continue;
+        if (nt.isRevealed || nt.isFlagged || nt.isRickRoll) continue;
+        queue.push({ row: n.row, col: n.col });
       }
     }
   }
@@ -193,8 +181,6 @@ function getNumberColor(count: number) {
 }
 
 export default function RickRollSweeper({ onBackHome }: Props) {
-  const [screen, setScreen] = useState<'home' | 'game'>('home');
-
   const [grid, setGrid] = useState<Tile[][]>(() => createEmptyGrid());
   const [minesPlaced, setMinesPlaced] = useState(false);
 
@@ -206,16 +192,17 @@ export default function RickRollSweeper({ onBackHome }: Props) {
 
   const [showVideoOverlay, setShowVideoOverlay] = useState(false);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
+
   const [videoNeedsUserStart, setVideoNeedsUserStart] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const safeTilesCount = GRID_SIZE * GRID_SIZE - RICKROLL_COUNT;
 
   useEffect(() => {
     const saved = localStorage.getItem(BEST_SCORE_KEY);
     setBestScore(saved ? Number(saved) : 0);
   }, []);
-
-  const safeTilesCount = GRID_SIZE * GRID_SIZE - RICKROLL_COUNT;
 
   const totalRevealedSafe = useMemo(() => {
     return grid.flat().filter((t) => t.isRevealed && !t.isRickRoll).length;
@@ -234,16 +221,16 @@ export default function RickRollSweeper({ onBackHome }: Props) {
 
   function startNewGame() {
     stopVideo();
+    setShowVideoOverlay(false);
+    setShowGameOverModal(false);
+    setVideoNeedsUserStart(false);
+
     setGrid(createEmptyGrid());
     setMinesPlaced(false);
 
     setScore(0);
-    setGameOver(false);
     setWon(false);
-
-    setShowVideoOverlay(false);
-    setShowGameOverModal(false);
-    setVideoNeedsUserStart(false);
+    setGameOver(false);
   }
 
   function updateBestScore(finalScore: number) {
@@ -261,30 +248,15 @@ export default function RickRollSweeper({ onBackHome }: Props) {
     v.volume = 1;
 
     const p = v.play();
-    if (p) {
+    if (p !== undefined) {
       p.then(() => setVideoNeedsUserStart(false)).catch(() => {
+        // fallback: autoplay có tiếng bị chặn
         v.muted = true;
-        setVideoNeedsUserStart(true);
+        v.play()
+          .then(() => setVideoNeedsUserStart(false))
+          .catch(() => setVideoNeedsUserStart(true));
       });
-    } else {
-      setVideoNeedsUserStart(true);
     }
-  }
-
-  function handleLose(finalScore: number) {
-    setGameOver(true);
-    setWon(false);
-    updateBestScore(finalScore);
-
-    setGrid((prev) => revealAllMines(prev));
-
-    setShowVideoOverlay(true);
-    setShowGameOverModal(false);
-
-    setTimeout(() => {
-      // autoplay có tiếng có thể bị chặn; ta có fallback button
-      tryPlayVideoWithSound();
-    }, 150);
   }
 
   function closeVideoOverlay() {
@@ -308,47 +280,14 @@ export default function RickRollSweeper({ onBackHome }: Props) {
     setWon(false);
     setMinesPlaced(false);
 
-    setScreen('home');
     onBackHome?.();
   }
 
-  function placeMinesAfterFirstClick(clickedRow: number, clickedCol: number) {
-    const safeBlob = generateRandomSafeBlob(clickedRow, clickedCol);
-
-    const allowed: number[] = [];
-    for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE; c++) {
-        const id = idxOf(r, c);
-        if (!safeBlob.has(id)) allowed.push(id);
-      }
-    }
-
-    shuffleInPlace(allowed);
-
-    const mined = cloneGrid(grid);
-    for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE; c++) {
-        mined[r][c].isRickRoll = false;
-        mined[r][c].adjacentCount = 0;
-        mined[r][c].isRevealed = false;
-        // flags trước first click không cho phép -> giữ như cũ
-      }
-    }
-
-    const chosen = allowed.slice(0, RICKROLL_COUNT);
-    for (const id of chosen) {
-      const r = Math.floor(id / GRID_SIZE);
-      const c = id % GRID_SIZE;
-      mined[r][c].isRickRoll = true;
-    }
-
-    computeAdjacentCounts(mined);
-    return mined;
-  }
-
   function toggleFlag(row: number, col: number) {
+    // giống Minesweeper thật: chỉ cho cờ sau khi mines đã được đặt
+    if (gameOver) return;
+    if (showVideoOverlay || showGameOverModal) return;
     if (!minesPlaced) return;
-    if (gameOver || showVideoOverlay || showGameOverModal) return;
 
     setGrid((prev) => {
       const next = cloneGrid(prev);
@@ -359,40 +298,68 @@ export default function RickRollSweeper({ onBackHome }: Props) {
     });
   }
 
+  function handleLose(finalScore: number, currentGrid: Tile[][]) {
+    setGameOver(true);
+    setWon(false);
+    updateBestScore(finalScore);
+
+    // hiện tất cả mine
+    setGrid(revealAllMines(currentGrid));
+
+    setShowVideoOverlay(true);
+    setShowGameOverModal(false);
+
+    setTimeout(() => {
+      tryPlayVideoWithSound();
+    }, 120);
+  }
+
   function handleTileClick(row: number, col: number) {
-    if (gameOver || showVideoOverlay || showGameOverModal) return;
+    if (gameOver) return;
+    if (showVideoOverlay || showGameOverModal) return;
 
-    const t = grid[row]?.[col];
-    if (!t || t.isRevealed || t.isFlagged) return;
+    const tile = grid[row]?.[col];
+    if (!tile || tile.isRevealed) return;
+    if (tile.isFlagged) return;
 
-    // First click: place mines + safe reveal
+    // FIRST CLICK: tạo mines ngay lúc bấm
     if (!minesPlaced) {
-      const mined = placeMinesAfterFirstClick(row, col);
-      const { newGrid, revealedCount } = revealFlood(mined, row, col);
+      const minedGrid = cloneGrid(grid);
+      const mineIndices = pickMinesExcludingSafeZone(row, col);
+
+      // đặt mine
+      for (const id of mineIndices) {
+        const r = Math.floor(id / GRID_SIZE);
+        const c = id % GRID_SIZE;
+        minedGrid[r][c].isRickRoll = true;
+      }
+
+      computeAdjacentCounts(minedGrid);
+
+      // reveal theo flood fill Minesweeper
+      const { newGrid, revealedCount } = revealFlood(minedGrid, row, col);
 
       setGrid(newGrid);
       setMinesPlaced(true);
+      setScore(revealedCount);
 
-      const nextScore = revealedCount; // score tính từ 0
-      setScore(nextScore);
-
-      const winNow = newGrid.flat().filter((x) => x.isRevealed && !x.isRickRoll).length === safeTilesCount;
-      if (winNow) {
+      const wonNow = newGrid.flat().filter((t) => t.isRevealed && !t.isRickRoll).length === safeTilesCount;
+      if (wonNow) {
         setWon(true);
         setGameOver(true);
-        updateBestScore(nextScore);
+        updateBestScore(revealedCount);
         setShowVideoOverlay(false);
         setShowGameOverModal(true);
       }
       return;
     }
 
-    // Normal: mine or reveal
-    if (t.isRickRoll) {
+    // NORMAL
+    if (tile.isRickRoll) {
       const nextGrid = cloneGrid(grid);
       nextGrid[row][col].isRevealed = true;
       setGrid(nextGrid);
-      handleLose(score);
+      handleLose(score, nextGrid);
       return;
     }
 
@@ -403,8 +370,8 @@ export default function RickRollSweeper({ onBackHome }: Props) {
     setGrid(newGrid);
     setScore(nextScore);
 
-    const winNow = newGrid.flat().filter((x) => x.isRevealed && !x.isRickRoll).length === safeTilesCount;
-    if (winNow) {
+    const wonNow = newGrid.flat().filter((t) => t.isRevealed && !t.isRickRoll).length === safeTilesCount;
+    if (wonNow) {
       setWon(true);
       setGameOver(true);
       updateBestScore(nextScore);
@@ -414,134 +381,95 @@ export default function RickRollSweeper({ onBackHome }: Props) {
   }
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-fuchsia-950 via-purple-900 to-indigo-950 text-white">
-      {screen === 'home' && (
-        <div
-          className="relative flex min-h-screen items-center justify-center overflow-hidden px-6"
-          style={{
-            backgroundImage: "url('/images/rickroll-bg.jpg')",
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-          }}
-        >
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/15 via-purple-500/15 to-blue-500/15" />
-
-          <div className="relative z-10 mx-auto flex max-w-3xl flex-col items-center text-center">
-            <div className="mb-4 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-1 text-sm backdrop-blur">
-              🎵 Meme Mode Activated
+    <div className="min-h-screen bg-gradient-to-br from-fuchsia-950 via-purple-900 to-indigo-950 text-white">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-4 sm:px-6">
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base">
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Current Score: <span className="text-pink-300">{score}</span>
             </div>
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Best Score: <span className="text-yellow-300">{bestScore}</span>
+            </div>
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Revealed: <span className="text-cyan-300">{totalRevealedSafe}</span>
+            </div>
+            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
+              Flags: <span className="text-orange-300">{totalFlags}</span>
+            </div>
+          </div>
 
-            <h1 className="text-5xl font-black tracking-tight sm:text-7xl">Rick Roll Sweeper</h1>
-            <p className="mt-4 max-w-xl text-lg text-white/85 sm:text-xl">
-              Dò mìn Rick Roll: bấm lần đầu để game tạo mìn an toàn quanh bạn. Mật độ mìn cao (150).
-            </p>
-
+          <div className="flex gap-3">
             <button
-              onClick={() => {
-                setScreen('game');
-                startNewGame();
-              }}
-              className="mt-10 rounded-2xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-purple-600 px-12 py-5 text-2xl font-extrabold shadow-2xl transition hover:scale-105 hover:shadow-pink-500/30"
+              onClick={startNewGame}
+              className="rounded-xl bg-white/15 px-4 py-2 font-semibold transition hover:bg-white/25"
             >
-              PLAY
+              Restart
+            </button>
+            <button
+              onClick={handleBackHomeClean}
+              className="rounded-xl bg-pink-500/80 px-4 py-2 font-semibold transition hover:bg-pink-500"
+            >
+              Home
             </button>
           </div>
         </div>
-      )}
 
-      {screen === 'game' && (
-        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-3 py-4 sm:px-6">
-          <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base">
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Current Score: <span className="text-pink-300">{score}</span>
-              </div>
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Best Score: <span className="text-yellow-300">{bestScore}</span>
-              </div>
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Revealed: <span className="text-cyan-300">{totalRevealedSafe}</span>
-              </div>
-              <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-                Flags: <span className="text-orange-300">{totalFlags}</span>
-              </div>
-            </div>
+        <div className="mb-3 text-center text-xs text-white/70 sm:text-sm">
+          Left click reveal • Right click flag 🚩
+        </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={startNewGame}
-                className="rounded-xl bg-white/15 px-4 py-2 font-semibold transition hover:bg-white/25"
-              >
-                Restart
-              </button>
-              <button
-                onClick={handleBackHomeClean}
-                className="rounded-xl bg-pink-500/80 px-4 py-2 font-semibold transition hover:bg-pink-500"
-              >
-                Home
-              </button>
-            </div>
-          </div>
-
-          <div className="mb-3 text-center text-xs text-white/70 sm:text-sm">
-            Left click reveal • Right click flag 🚩
-          </div>
-
-          <div className="flex flex-1 items-center justify-center">
-            <div className="max-w-full overflow-auto rounded-3xl border border-white/10 bg-black/20 p-3 shadow-2xl backdrop-blur sm:p-4">
-              <div
-                className="grid gap-[2px] sm:gap-1"
-                style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))` }}
-              >
-                {grid.flat().map((tile) => (
-                  <button
-                    key={tile.id}
-                    onClick={() => handleTileClick(tile.row, tile.col)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      toggleFlag(tile.row, tile.col);
-                    }}
-                    disabled={showVideoOverlay || showGameOverModal}
-                    className={[
-                      'flex aspect-square h-4 w-4 items-center justify-center rounded-[4px] border text-[10px] font-extrabold transition select-none sm:h-6 sm:w-6 sm:text-xs md:h-7 md:w-7',
-                      tile.isRevealed
-                        ? tile.isRickRoll
-                          ? 'border-red-400 bg-red-500/80 text-white'
-                          : 'border-white/10 bg-white/90'
-                        : tile.isFlagged
-                        ? 'border-orange-300 bg-gradient-to-br from-orange-500 to-red-600 text-white hover:brightness-110'
-                        : 'border-white/10 bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:scale-[1.03] hover:from-slate-600 hover:to-slate-700',
-                    ].join(' ')}
-                  >
-                    {tile.isRevealed ? (
-                      tile.isRickRoll ? (
-                        <span>🎵</span>
-                      ) : tile.adjacentCount > 0 ? (
-                        <span className={getNumberColor(tile.adjacentCount)}>{tile.adjacentCount}</span>
-                      ) : (
-                        <span className="text-transparent">0</span>
-                      )
-                    ) : tile.isFlagged ? (
-                      <span>🚩</span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="max-w-full overflow-auto rounded-3xl border border-white/10 bg-black/20 p-3 shadow-2xl backdrop-blur sm:p-4">
+            <div
+              className="grid gap-[2px] sm:gap-1"
+              style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))` }}
+            >
+              {grid.flat().map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => handleTileClick(t.row, t.col)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    toggleFlag(t.row, t.col);
+                  }}
+                  disabled={showVideoOverlay || showGameOverModal}
+                  className={[
+                    'flex aspect-square h-4 w-4 items-center justify-center rounded-[4px] border text-[10px] font-extrabold transition select-none sm:h-6 sm:w-6 sm:text-xs md:h-7 md:w-7',
+                    t.isRevealed
+                      ? t.isRickRoll
+                        ? 'border-red-400 bg-red-500/80 text-white'
+                        : 'border-white/10 bg-white/90'
+                      : t.isFlagged
+                      ? 'border-orange-300 bg-gradient-to-br from-orange-500 to-red-600 text-white hover:brightness-110'
+                      : 'border-white/10 bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:scale-[1.03] hover:from-slate-600 hover:to-slate-700',
+                  ].join(' ')}
+                >
+                  {t.isRevealed ? (
+                    t.isRickRoll ? (
+                      <span>🎵</span>
+                    ) : t.adjacentCount > 0 ? (
+                      <span className={getNumberColor(t.adjacentCount)}>{t.adjacentCount}</span>
+                    ) : (
+                      // ô 0: trống như Minesweeper
+                      <span className="text-transparent">0</span>
+                    )
+                  ) : t.isFlagged ? (
+                    <span>🚩</span>
+                  ) : null}
+                </button>
+              ))}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
       {showVideoOverlay && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4">
           <div className="relative w-full max-w-3xl rounded-2xl bg-black p-4 shadow-2xl">
             <button
               type="button"
-              onClick={() => {
-                closeVideoOverlay();
-              }}
+              onClick={() => closeVideoOverlay()}
               className="absolute right-3 top-3 z-[10000] rounded-lg bg-white/20 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/30"
             >
               Close Video
@@ -567,7 +495,7 @@ export default function RickRollSweeper({ onBackHome }: Props) {
             {videoNeedsUserStart && (
               <div className="mt-4 flex flex-col items-center gap-3 text-center">
                 <p className="text-sm text-white/80">
-                  Trình duyệt chặn autoplay có tiếng. Bấm để phát âm thanh.
+                  Trình duyệt chặn autoplay có tiếng. Bấm để phát.
                 </p>
                 <button
                   onClick={tryPlayVideoWithSound}
@@ -615,6 +543,7 @@ export default function RickRollSweeper({ onBackHome }: Props) {
         </div>
       )}
 
+      {/* watermark */}
       <div className="pointer-events-none fixed bottom-3 right-4 z-[10001] text-xs font-medium tracking-wide text-white/35 sm:bottom-4 sm:right-5 sm:text-sm">
         Dev: Anh Minh
       </div>
