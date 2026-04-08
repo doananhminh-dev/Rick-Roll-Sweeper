@@ -17,7 +17,7 @@ type Props = {
 };
 
 const GRID_SIZE = 20;
-const RICKROLL_COUNT = 100;
+const RICKROLL_COUNT = 111;
 
 const BEST_SCORE_KEY = 'rickroll-sweeper-best-score';
 const RICKROLL_VIDEO_URL = '/videos/rickroll.mp4';
