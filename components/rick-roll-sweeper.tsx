@@ -6,7 +6,7 @@ type Tile = {
   id: number;
   row: number;
   col: number;
-  isRickRoll: boolean; // mine
+  isRickRoll: boolean;
   isRevealed: boolean;
   isFlagged: boolean;
   adjacentCount: number;
@@ -26,132 +26,113 @@ const LOSE_TEXT = 'Bạn đã bị rick roll rồi 😂';
 function createEmptyGrid(): Tile[][] {
   let id = 0;
   const grid: Tile[][] = [];
-  for (let r = 0; r < GRID_SIZE; r++) {
-    const row: Tile[] = [];
-    for (let c = 0; c < GRID_SIZE; c++) {
-      row.push({
+
+  for (let row = 0; row < GRID_SIZE; row++) {
+    const currentRow: Tile[] = [];
+    for (let col = 0; col < GRID_SIZE; col++) {
+      currentRow.push({
         id: id++,
-        row: r,
-        col: c,
+        row,
+        col,
         isRickRoll: false,
         isRevealed: false,
         isFlagged: false,
         adjacentCount: 0,
       });
     }
-    grid.push(row);
+    grid.push(currentRow);
   }
+
   return grid;
 }
 
 function cloneGrid(grid: Tile[][]): Tile[][] {
-  return grid.map((row) => row.map((t) => ({ ...t })));
+  return grid.map((row) => row.map((tile) => ({ ...tile })));
 }
 
 function getNeighbors(row: number, col: number) {
-  const res: Array<{ row: number; col: number }> = [];
+  const neighbors: Array<{ row: number; col: number }> = [];
+
   for (let dr = -1; dr <= 1; dr++) {
     for (let dc = -1; dc <= 1; dc++) {
       if (dr === 0 && dc === 0) continue;
+
       const nr = row + dr;
       const nc = col + dc;
+
       if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
-        res.push({ row: nr, col: nc });
+        neighbors.push({ row: nr, col: nc });
       }
     }
   }
-  return res;
+
+  return neighbors;
 }
 
-function idxOf(row: number, col: number) {
+function getIndex(row: number, col: number) {
   return row * GRID_SIZE + col;
 }
 
-function pickMinesExcludingSafeZone(clickedRow: number, clickedCol: number) {
-  // Safe zone = ô đầu + 8 ô kề
-  const safeZone = new Set<number>();
-  safeZone.add(idxOf(clickedRow, clickedCol));
-  for (const nb of getNeighbors(clickedRow, clickedCol)) {
-    safeZone.add(idxOf(nb.row, nb.col));
-  }
-
-  const allowed: number[] = [];
-  for (let r = 0; r < GRID_SIZE; r++) {
-    for (let c = 0; c < GRID_SIZE; c++) {
-      const id = idxOf(r, c);
-      if (!safeZone.has(id)) allowed.push(id);
-    }
-  }
-
-  // random lấy không lặp
-  // shuffle nhanh bằng Fisher-Yates một phần
-  const arr = [...allowed];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-
-  return arr.slice(0, RICKROLL_COUNT);
-}
-
 function computeAdjacentCounts(grid: Tile[][]) {
-  for (let r = 0; r < GRID_SIZE; r++) {
-    for (let c = 0; c < GRID_SIZE; c++) {
-      const tile = grid[r][c];
-      if (tile.isRickRoll) continue;
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      if (grid[row][col].isRickRoll) continue;
 
       let count = 0;
-      for (const nb of getNeighbors(r, c)) {
-        if (grid[nb.row][nb.col].isRickRoll) count++;
+      for (const neighbor of getNeighbors(row, col)) {
+        if (grid[neighbor.row][neighbor.col].isRickRoll) count++;
       }
-      tile.adjacentCount = count;
+
+      grid[row][col].adjacentCount = count;
     }
   }
 }
 
-function revealAreaMinesweeper(gridInput: Tile[][], startRow: number, startCol: number) {
-  const grid = cloneGrid(gridInput);
-
+function revealArea(gridInput: Tile[][], startRow: number, startCol: number) {
+  const newGrid = cloneGrid(gridInput);
   const queue: Array<{ row: number; col: number }> = [{ row: startRow, col: startCol }];
   const visited = new Set<number>();
   let revealedCount = 0;
 
   while (queue.length > 0) {
-    const cur = queue.shift()!;
-    const key = idxOf(cur.row, cur.col);
+    const current = queue.shift()!;
+    const key = getIndex(current.row, current.col);
+
     if (visited.has(key)) continue;
     visited.add(key);
 
-    const tile = grid[cur.row][cur.col];
-    if (!tile) continue;
-    if (tile.isRevealed) continue;
-    if (tile.isFlagged) continue;
-    if (tile.isRickRoll) continue;
+    const tile = newGrid[current.row][current.col];
+
+    if (!tile || tile.isRevealed || tile.isFlagged || tile.isRickRoll) continue;
 
     tile.isRevealed = true;
     revealedCount++;
 
-    // Minesweeper flood fill: chỉ lan khi ô có adjacentCount = 0
     if (tile.adjacentCount === 0) {
-      for (const nb of getNeighbors(cur.row, cur.col)) {
-        const nbTile = grid[nb.row][nb.col];
-        if (!nbTile || nbTile.isRevealed || nbTile.isFlagged || nbTile.isRickRoll) continue;
-        queue.push({ row: nb.row, col: nb.col });
+      for (const neighbor of getNeighbors(current.row, current.col)) {
+        const neighborTile = newGrid[neighbor.row][neighbor.col];
+        if (!neighborTile) continue;
+        if (neighborTile.isRevealed || neighborTile.isFlagged || neighborTile.isRickRoll) continue;
+        queue.push({ row: neighbor.row, col: neighbor.col });
       }
     }
   }
 
-  return { newGrid: grid, revealedCount };
+  return { newGrid, revealedCount };
 }
 
 function revealAllMines(gridInput: Tile[][]) {
-  const grid = cloneGrid(gridInput);
-  for (let r = 0; r < GRID_SIZE; r++) {
-    for (let c = 0; c < GRID_SIZE; c++) {
-      if (grid[r][c].isRickRoll) grid[r][c].isRevealed = true;
+  const newGrid = cloneGrid(gridInput);
+
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      if (newGrid[row][col].isRickRoll) {
+        newGrid[row][col].isRevealed = true;
+      }
     }
   }
-  return grid;
+
+  return newGrid;
 }
 
 function getNumberColor(count: number) {
@@ -177,6 +158,110 @@ function getNumberColor(count: number) {
   }
 }
 
+/**
+ * Tạo "safe blob" ngẫu nhiên quanh ô đầu tiên.
+ * Blob này:
+ * - luôn chứa ô đầu tiên
+ * - méo, không đối xứng, không theo hình cố định
+ * - thường cỡ 6-14 ô
+ * - giúp vùng mở đầu có hình dạng tự nhiên hơn
+ */
+function generateRandomSafeBlob(startRow: number, startCol: number) {
+  const safeSet = new Set<number>();
+  const frontier: Array<{ row: number; col: number }> = [{ row: startRow, col: startCol }];
+
+  safeSet.add(getIndex(startRow, startCol));
+
+  // random size blob
+  const targetSize = 6 + Math.floor(Math.random() * 9); // 6 -> 14
+
+  let pointer = 0;
+
+  while (pointer < frontier.length && safeSet.size < targetSize) {
+    const current = frontier[pointer++];
+    const neighbors = getNeighbors(current.row, current.col).sort(() => Math.random() - 0.5);
+
+    for (const neighbor of neighbors) {
+      const key = getIndex(neighbor.row, neighbor.col);
+      if (safeSet.has(key)) continue;
+
+      // xác suất thêm vào để blob méo ngẫu nhiên
+      const chance = 0.45 + Math.random() * 0.35;
+      if (Math.random() < chance) {
+        safeSet.add(key);
+        frontier.push(neighbor);
+      }
+
+      if (safeSet.size >= targetSize) break;
+    }
+  }
+
+  // đảm bảo tối thiểu có một ít ô xung quanh
+  const around = getNeighbors(startRow, startCol).sort(() => Math.random() - 0.5);
+  for (const n of around) {
+    if (safeSet.size >= 6) break;
+    safeSet.add(getIndex(n.row, n.col));
+  }
+
+  return safeSet;
+}
+
+function placeMinesAfterFirstClick(baseGrid: Tile[][], clickedRow: number, clickedCol: number) {
+  const nextGrid = cloneGrid(baseGrid);
+
+  // reset mine/adjacent/revealed
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      nextGrid[row][col].isRickRoll = false;
+      nextGrid[row][col].adjacentCount = 0;
+      nextGrid[row][col].isRevealed = false;
+    }
+  }
+
+  // Tạo safe blob ngẫu nhiên
+  const safeBlob = generateRandomSafeBlob(clickedRow, clickedCol);
+
+  // đảm bảo thêm ô đầu + 8 ô quanh vẫn an toàn để first click luôn đẹp
+  safeBlob.add(getIndex(clickedRow, clickedCol));
+  for (const neighbor of getNeighbors(clickedRow, clickedCol)) {
+    safeBlob.add(getIndex(neighbor.row, neighbor.col));
+  }
+
+  const availableIndices: number[] = [];
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      const index = getIndex(row, col);
+      if (!safeBlob.has(index)) {
+        availableIndices.push(index);
+      }
+    }
+  }
+
+  // shuffle
+  for (let i = availableIndices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [availableIndices[i], availableIndices[j]] = [availableIndices[j], availableIndices[i]];
+  }
+
+  const chosenMines = availableIndices.slice(0, RICKROLL_COUNT);
+
+  for (const index of chosenMines) {
+    const row = Math.floor(index / GRID_SIZE);
+    const col = index % GRID_SIZE;
+    nextGrid[row][col].isRickRoll = true;
+  }
+
+  computeAdjacentCounts(nextGrid);
+
+  return nextGrid;
+}
+
+function checkWin(grid: Tile[][]) {
+  const safeTileCount = GRID_SIZE * GRID_SIZE - RICKROLL_COUNT;
+  const revealedSafeTiles = grid.flat().filter((tile) => tile.isRevealed && !tile.isRickRoll).length;
+  return revealedSafeTiles === safeTileCount;
+}
+
 export default function RickRollSweeper({ onBackHome }: Props) {
   const [grid, setGrid] = useState<Tile[][]>(() => createEmptyGrid());
   const [minesPlaced, setMinesPlaced] = useState(false);
@@ -184,8 +269,8 @@ export default function RickRollSweeper({ onBackHome }: Props) {
   const [score, setScore] = useState(0);
   const [bestScore, setBestScore] = useState(0);
 
-  const [won, setWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [won, setWon] = useState(false);
 
   const [showVideoOverlay, setShowVideoOverlay] = useState(false);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
@@ -199,18 +284,18 @@ export default function RickRollSweeper({ onBackHome }: Props) {
   }, []);
 
   const totalRevealedSafe = useMemo(() => {
-    return grid.flat().filter((t) => t.isRevealed && !t.isRickRoll).length;
+    return grid.flat().filter((tile) => tile.isRevealed && !tile.isRickRoll).length;
   }, [grid]);
 
-  const totalFlags = useMemo(() => grid.flat().filter((t) => t.isFlagged).length, [grid]);
-
-  const safeTilesCount = GRID_SIZE * GRID_SIZE - RICKROLL_COUNT;
+  const totalFlags = useMemo(() => {
+    return grid.flat().filter((tile) => tile.isFlagged).length;
+  }, [grid]);
 
   function stopVideo() {
-    const v = videoRef.current;
-    if (!v) return;
-    v.pause();
-    v.currentTime = 0;
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    video.currentTime = 0;
   }
 
   function startNewGame() {
@@ -223,8 +308,8 @@ export default function RickRollSweeper({ onBackHome }: Props) {
     setMinesPlaced(false);
 
     setScore(0);
-    setWon(false);
     setGameOver(false);
+    setWon(false);
   }
 
   function updateBestScore(finalScore: number) {
@@ -234,29 +319,39 @@ export default function RickRollSweeper({ onBackHome }: Props) {
   }
 
   function tryPlayVideoWithSound() {
-    const v = videoRef.current;
-    if (!v) return;
+    const video = videoRef.current;
+    if (!video) return;
 
-    v.currentTime = 0;
-    v.muted = false;
-    v.volume = 1;
+    video.currentTime = 0;
+    video.muted = false;
+    video.volume = 1;
 
-    const p = v.play();
-    if (p !== undefined) {
-      p.then(() => setVideoNeedsUserStart(false)).catch(() => {
-        // nếu autoplay có tiếng bị chặn => cho người dùng bấm nút
-        v.muted = true;
-        v.play().then(() => setVideoNeedsUserStart(true)).catch(() => setVideoNeedsUserStart(true));
-      });
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setVideoNeedsUserStart(false);
+        })
+        .catch(() => {
+          video.muted = true;
+          video
+            .play()
+            .then(() => {
+              setVideoNeedsUserStart(true);
+            })
+            .catch(() => {
+              setVideoNeedsUserStart(true);
+            });
+        });
     }
   }
 
-  function handleLose(finalScore: number) {
+  function handleLose(finalScore: number, nextGrid: Tile[][]) {
     setGameOver(true);
     setWon(false);
     updateBestScore(finalScore);
 
-    setGrid((prev) => revealAllMines(prev));
+    setGrid(revealAllMines(nextGrid));
     setShowVideoOverlay(true);
     setShowGameOverModal(false);
 
@@ -290,15 +385,15 @@ export default function RickRollSweeper({ onBackHome }: Props) {
   }
 
   function toggleFlag(row: number, col: number) {
+    if (!minesPlaced) return;
     if (gameOver) return;
-    if (!minesPlaced) return; // y như minesweeper: cho cờ sau khi có mìn
     if (showVideoOverlay || showGameOverModal) return;
 
     setGrid((prev) => {
       const next = cloneGrid(prev);
-      const t = next[row][col];
-      if (!t || t.isRevealed) return prev;
-      t.isFlagged = !t.isFlagged;
+      const tile = next[row][col];
+      if (!tile || tile.isRevealed) return prev;
+      tile.isFlagged = !tile.isFlagged;
       return next;
     });
   }
@@ -307,61 +402,46 @@ export default function RickRollSweeper({ onBackHome }: Props) {
     if (gameOver) return;
     if (showVideoOverlay || showGameOverModal) return;
 
-    const t = grid[row]?.[col];
-    if (!t || t.isRevealed || t.isFlagged) return;
+    const tile = grid[row]?.[col];
+    if (!tile || tile.isRevealed || tile.isFlagged) return;
 
-    // FIRST CLICK: đặt mìn nhưng đảm bảo ô đầu + 8 ô kề an toàn
+    // FIRST CLICK
     if (!minesPlaced) {
-      const minedGrid = cloneGrid(grid);
-
-      const mineIndices = pickMinesExcludingSafeZone(row, col);
-      for (const idx of mineIndices) {
-        const r = Math.floor(idx / GRID_SIZE);
-        const c = idx % GRID_SIZE;
-        minedGrid[r][c].isRickRoll = true;
-      }
-
-      computeAdjacentCounts(minedGrid);
-
-      // reveal ngay vùng theo flood fill Minesweeper
-      const { newGrid, revealedCount } = revealAreaMinesweeper(minedGrid, row, col);
+      const initializedGrid = placeMinesAfterFirstClick(grid, row, col);
+      const { newGrid, revealedCount } = revealArea(initializedGrid, row, col);
 
       setGrid(newGrid);
       setMinesPlaced(true);
-
       setScore(revealedCount);
-      setWon(false);
 
-      // win check (rất hiếm)
-      const revealedSafe = newGrid.flat().filter((x) => x.isRevealed && !x.isRickRoll).length;
-      if (revealedSafe === safeTilesCount) {
+      if (checkWin(newGrid)) {
         setWon(true);
         setGameOver(true);
         updateBestScore(revealedCount);
         setShowVideoOverlay(false);
         setShowGameOverModal(true);
       }
+
       return;
     }
 
-    // NORMAL gameplay after mines are placed
-    if (t.isRickRoll) {
-      const finalGrid = cloneGrid(grid);
-      finalGrid[row][col].isRevealed = true;
-      setGrid(finalGrid);
-      handleLose(score);
+    // normal click
+    if (tile.isRickRoll) {
+      const nextGrid = cloneGrid(grid);
+      nextGrid[row][col].isRevealed = true;
+      setGrid(nextGrid);
+      handleLose(score, nextGrid);
       return;
     }
 
-    const { newGrid, revealedCount } = revealAreaMinesweeper(grid, row, col);
+    const { newGrid, revealedCount } = revealArea(grid, row, col);
     if (revealedCount <= 0) return;
 
     const nextScore = score + revealedCount;
     setGrid(newGrid);
     setScore(nextScore);
 
-    const revealedSafe = newGrid.flat().filter((x) => x.isRevealed && !x.isRickRoll).length;
-    if (revealedSafe === safeTilesCount) {
+    if (checkWin(newGrid)) {
       setWon(true);
       setGameOver(true);
       updateBestScore(nextScore);
@@ -378,164 +458,4 @@ export default function RickRollSweeper({ onBackHome }: Props) {
             <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
               Current Score: <span className="text-pink-300">{score}</span>
             </div>
-            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-              Best Score: <span className="text-yellow-300">{bestScore}</span>
-            </div>
-            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-              Revealed: <span className="text-cyan-300">{totalRevealedSafe}</span>
-            </div>
-            <div className="rounded-xl bg-black/20 px-4 py-2 font-semibold">
-              Flags: <span className="text-orange-300">{totalFlags}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={startNewGame}
-              className="rounded-xl bg-white/15 px-4 py-2 font-semibold transition hover:bg-white/25"
-            >
-              Restart
-            </button>
-            <button
-              onClick={handleBackHomeClean}
-              className="rounded-xl bg-pink-500/80 px-4 py-2 font-semibold transition hover:bg-pink-500"
-            >
-              Home
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-3 text-center text-xs text-white/70 sm:text-sm">
-          Left click reveal • Right click flag 🚩
-        </div>
-
-        <div className="flex flex-1 items-center justify-center">
-          <div className="max-w-full overflow-auto rounded-3xl border border-white/10 bg-black/20 p-3 shadow-2xl backdrop-blur sm:p-4">
-            <div
-              className="grid gap-[2px] sm:gap-1"
-              style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))` }}
-            >
-              {grid.flat().map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => handleTileClick(t.row, t.col)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    toggleFlag(t.row, t.col);
-                  }}
-                  disabled={gameOver || showVideoOverlay || showGameOverModal}
-                  className={[
-                    'flex aspect-square h-4 w-4 items-center justify-center rounded-[4px] border text-[10px] font-extrabold transition select-none sm:h-6 sm:w-6 sm:text-xs md:h-7 md:w-7',
-                    t.isRevealed
-                      ? t.isRickRoll
-                        ? 'border-red-400 bg-red-500/80 text-white'
-                        : 'border-white/10 bg-white/90'
-                      : t.isFlagged
-                        ? 'border-orange-300 bg-gradient-to-br from-orange-500 to-red-600 text-white hover:brightness-110'
-                        : 'border-white/10 bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:scale-[1.03] hover:from-slate-600 hover:to-slate-700',
-                  ].join(' ')}
-                >
-                  {t.isRevealed ? (
-                    t.isRickRoll ? (
-                      <span>🎵</span>
-                    ) : t.adjacentCount > 0 ? (
-                      <span className={getNumberColor(t.adjacentCount)}>{t.adjacentCount}</span>
-                    ) : (
-                      // Minesweeper ô 0 thường trống
-                      <span className="text-transparent">0</span>
-                    )
-                  ) : t.isFlagged ? (
-                    <span>🚩</span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {showVideoOverlay && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4">
-          <div className="relative w-full max-w-3xl rounded-2xl bg-black p-4 shadow-2xl">
-            <button
-              type="button"
-              onClick={closeVideoOverlay}
-              className="absolute right-3 top-3 z-[10000] rounded-lg bg-white/20 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/30"
-            >
-              Close Video
-            </button>
-
-            <div className="mb-3 pr-28 text-lg font-extrabold text-pink-300 sm:text-2xl">
-              {LOSE_TEXT}
-            </div>
-
-            <div className="overflow-hidden rounded-xl">
-              <video
-                ref={videoRef}
-                className="h-auto max-h-[70vh] w-full bg-black"
-                src={RICKROLL_VIDEO_URL}
-                playsInline
-                controls
-                preload="auto"
-                onEnded={handleVideoEnded}
-              />
-            </div>
-
-            {videoNeedsUserStart && (
-              <div className="mt-4 flex flex-col items-center gap-3 text-center">
-                <p className="text-sm text-white/80">
-                  Trình duyệt chặn autoplay có tiếng. Bấm nút để phát âm thanh.
-                </p>
-                <button
-                  onClick={tryPlayVideoWithSound}
-                  className="rounded-xl bg-pink-500 px-5 py-3 font-bold text-white transition hover:bg-pink-400"
-                >
-                  Play with Sound
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showGameOverModal && (
-        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-purple-950 p-6 text-center shadow-2xl">
-            <div className="text-3xl font-black text-pink-300">
-              {won ? 'You Win! 🎉' : LOSE_TEXT}
-            </div>
-
-            <div className="mt-4 space-y-2 text-base text-white/90">
-              <p>
-                Final Score: <span className="font-bold text-cyan-300">{score}</span>
-              </p>
-              <p>
-                Best Score: <span className="font-bold text-yellow-300">{bestScore}</span>
-              </p>
-            </div>
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                onClick={startNewGame}
-                className="flex-1 rounded-xl bg-gradient-to-r from-pink-500 to-fuchsia-600 px-4 py-3 font-bold transition hover:scale-[1.02]"
-              >
-                Play Again
-              </button>
-              <button
-                onClick={handleBackHomeClean}
-                className="flex-1 rounded-xl bg-white/10 px-4 py-3 font-bold transition hover:bg-white/20"
-              >
-                Back to Home
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Watermark */}
-      <div className="pointer-events-none fixed bottom-3 right-4 z-[10001] text-xs font-medium tracking-wide text-white/35 sm:bottom-4 sm:right-5 sm:text-sm">
-        Dev: Anh Minh
-      </div>
-    </div>
-  );
-}
+            <div 
